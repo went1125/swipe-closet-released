@@ -8,6 +8,8 @@ import 'presentation/pages/home_page.dart';
 // ★ 1. 引入剛剛自動產生的設定檔
 import 'firebase_options.dart'; 
 
+import 'presentation/pages/root_page.dart'; // 引入 RootPage
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
@@ -34,8 +36,9 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.pinkAccent),
         useMaterial3: true,
+        scaffoldBackgroundColor: Colors.white,
       ),
-      home: const HomePage(),
+      home: const RootPage(), // ★ 改成 RootPage
     );
   }
 }
