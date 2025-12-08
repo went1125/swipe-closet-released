@@ -41,7 +41,7 @@ class HomeActionButtons extends StatelessWidget {
       onPressed: onPressed,
       icon: Icon(icon, size: 30),
       style: IconButton.styleFrom(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color.fromARGB(255, 206, 202, 202),
         foregroundColor: color,
         iconSize: 30,
         elevation: 5, // 加一點陰影更有質感

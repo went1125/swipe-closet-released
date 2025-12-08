@@ -3,8 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'presentation/pages/home_page.dart';
-
 // ★ 1. 引入剛剛自動產生的設定檔
 import 'firebase_options.dart'; 
 

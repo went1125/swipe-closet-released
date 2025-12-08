@@ -135,7 +135,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         'id': product.id,
         'name': product.name,
         'price': product.price,
-        'imageUrl': product.imageUrl,
+        'imageUrl': product.images,
         'deepLink': product.deepLink,
         'timestamp': FieldValue.serverTimestamp(),
       });
