@@ -47,6 +47,7 @@ android/gradlew.bat
 *.jks
 *.keystore
 *.key
+serviceAccountKey.json
 android/key.properties
 
 # -----------------------

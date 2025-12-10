@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../data/models/product_model.dart';
 import '../providers/product_provider.dart';
 import 'wishlist_page.dart';
+import 'profile_page.dart'; // ★ 1. 記得引入 ProfilePage
 
 // 引入剛剛拆分出來的 Widgets
 import '../widgets/home/product_card.dart';
@@ -48,17 +49,29 @@ class _HomePageState extends ConsumerState<HomePage> {
     super.dispose();
   }
 
-  @override
+ @override
   Widget build(BuildContext context) {
     final productAsyncValue = ref.watch(productProvider);
 
     return Scaffold(
       appBar: AppBar(
+        // ★ 2. 新增左上角的個人檔案按鈕
+        leading: IconButton(
+          icon: const Icon(Icons.person_outline, color: Colors.black, size: 28),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ProfilePage()),
+            );
+          },
+        ),
+        
         title: const Text("滑滑衣櫥", style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
+          // 這是原本的收藏頁按鈕
           IconButton(
             icon: const Icon(Icons.shopping_bag_outlined, color: Colors.black),
             onPressed: () => Navigator.push(
@@ -135,7 +148,10 @@ class _HomePageState extends ConsumerState<HomePage> {
         'id': product.id,
         'name': product.name,
         'price': product.price,
-        'imageUrl': product.images,
+        // ★ 關鍵更新：存入多張圖片和描述
+        'images': product.images, 
+        'imageUrl': product.images.first, // 保留這個欄位給列表頁當縮圖用
+        'description': product.description,
         'deepLink': product.deepLink,
         'timestamp': FieldValue.serverTimestamp(),
       });
