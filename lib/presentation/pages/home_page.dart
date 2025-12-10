@@ -129,7 +129,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (direction == CardSwiperDirection.right) {
       _saveToWishlist(product);
     } else if (direction == CardSwiperDirection.top) {
-      _launchShopee(product.deepLink);
+      _launchUrl(product.deepLink);
     }
     return true;
   }
@@ -170,7 +170,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
-  Future<void> _launchShopee(String url) async {
+  Future<void> _launchUrl(String url) async {
     final Uri uri = Uri.parse(url);
     try {
       if (!await launchUrl(uri,

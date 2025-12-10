@@ -1,83 +1,119 @@
 // functions/index.js
 
-const functions = require("firebase-functions");
+const { onRequest } = require("firebase-functions/v2/https"); // ★ 改用 V2
+const { defineSecret } = require("firebase-functions/params");
+const admin = require("firebase-admin");
 const axios = require("axios");
-const crypto = require("crypto");
 
-// --- 設定區 ---
-// 開發階段設為 true，上線後拿到 Key 改為 false
-const IS_MOCK_MODE = true; 
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
 
-const SHOPEE_PARTNER_ID = process.env.SHOPEE_PARTNER_ID || "YOUR_PARTNER_ID";
-const SHOPEE_KEY = process.env.SHOPEE_KEY || "YOUR_SECRET_KEY";
+// ★ 定義 Secret
+const affiliateApiKey = defineSecret("AFFILIATE_API_KEY");
 
-// --- 核心函式 ---
-exports.getRecommendations = functions.https.onRequest(async (req, res) => {
-  // 1. 設定 CORS (允許跨域請求)
-  res.set("Access-Control-Allow-Origin", "*");
-  
-  // 2. ★ 優化重點：設定快取機制 (CDN 快取 10 分鐘，本地快取 5 分鐘)
-  // 這行代碼能幫你省下巨額的 Firebase 運算費用
-  res.set('Cache-Control', 'public, max-age=300, s-maxage=600');
+// ★ 設定區
+const API_BASE_URL = "https://api.pub.affiliates.one/api/v2/affiliates/products.json";
+const TARGET_OFFER_ID = "4139"; // 蝦皮商城
 
-  if (req.method === "OPTIONS") {
-    res.set("Access-Control-Allow-Methods", "GET");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
-    res.status(204).send("");
-    return;
-  }
+// ★ V2 語法：直接在 onRequest 的第一個參數設定 secrets
+exports.syncAffiliateProducts = onRequest(
+  { 
+    secrets: [affiliateApiKey],
+    timeoutSeconds: 60, // 避免執行太久被切斷
+    region: "us-central1" // 或你指定的區域
+  },
+  async (req, res) => {
+    try {
+      console.log(`🚀 開始同步 Offer ID: ${TARGET_OFFER_ID} 的商品...`);
 
-  try {
-    const { keyword = "女裝", limit = 20 } = req.query;
-    let items = [];
+      // ★ 取出 Secret 的值
+      const apiKey = affiliateApiKey.value();
 
-    if (IS_MOCK_MODE) {
-      console.log("⚠️ 模擬模式：回傳假資料");
-      items = generateMockData(limit);
-    } else {
-      console.log("🚀 真實模式：呼叫蝦皮 API");
-      items = await fetchFromShopee(keyword, limit);
+      // 1. 呼叫聯盟網 API
+      const response = await axios.get(API_BASE_URL, {
+        params: {
+          api_key: apiKey,
+          offer_id: TARGET_OFFER_ID,
+          locale: "zh-TW",
+          currency: "TWD",
+          per_page: 50,
+          page: req.query.page || 1,
+        }
+      });
+
+      const products = response.data.data;
+      
+      if (!products || !Array.isArray(products) || products.length === 0) {
+        return res.json({ 
+          success: false, 
+          message: "找不到商品或 API 回傳空值",
+          debug: response.data 
+        });
+      }
+
+      const batch = admin.firestore().batch();
+      const collectionRef = admin.firestore().collection("products");
+      let count = 0;
+
+      // 2. 資料清洗
+      for (const item of products) {
+        const docId = item.universal_id_value || (item.id ? item.id.toString() : admin.firestore().collection("products").doc().id);
+        const docRef = collectionRef.doc(docId);
+
+        let price = 0;
+        if (item.prices) {
+          if (item.prices.sale && item.prices.sale.TWD) {
+            price = item.prices.sale.TWD;
+          } else if (item.prices.retail && item.prices.retail.TWD) {
+            price = item.prices.retail.TWD;
+          }
+        } else if (item.price_min) {
+          price = item.price_min;
+        }
+
+        let images = [];
+        if (Array.isArray(item.images) && item.images.length > 0) {
+          images = item.images.map(img => (typeof img === 'object' ? img.url : img)).filter(url => url);
+        } else if (item.image_url) {
+          images = [item.image_url];
+        }
+        
+        if (images.length === 0) continue;
+
+        const categories = [];
+        if (item.category_1) categories.push(item.category_1);
+        if (item.category_2) categories.push(item.category_2);
+
+        const productData = {
+          id: docId,
+          name: item.title,
+          price: parseFloat(price),
+          images: images,
+          imageUrl: images[0],
+          description: item.description_1 || "精選商品",
+          deepLink: item.tracking_url,
+          categories: categories,
+          platform: "affiliates_one",
+          offerId: TARGET_OFFER_ID,
+          isAvailable: true,
+          timestamp: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        batch.set(docRef, productData, { merge: true });
+        count++;
+      }
+
+      if (count > 0) {
+        await batch.commit();
+      }
+      
+      console.log(`✅ 成功同步 ${count} 筆商品`);
+      res.json({ success: true, count: count, message: "同步完成 (V2)" });
+
+    } catch (error) {
+      console.error("API Error:", error.message);
+      res.status(500).json({ success: false, error: error.message });
     }
-
-    res.json({
-      success: true,
-      data: items,
-      source: IS_MOCK_MODE ? "mock_server" : "shopee_api"
-    });
-
-  } catch (error) {
-    console.error("API Error:", error);
-    res.status(500).json({ success: false, error: error.message });
   }
-});
-
-// --- 輔助函式：產生模擬資料 ---
-function generateMockData(count) {
-  const mockItems = [];
-  const fakeImages = [
-    "https://images.pexels.com/photos/1036623/pexels-photo-1036623.jpeg?auto=compress&cs=tinysrgb&w=600",
-    "https://images.pexels.com/photos/157675/fashion-men-s-individuality-black-and-white-157675.jpeg?auto=compress&cs=tinysrgb&w=600",
-    "https://images.pexels.com/photos/1639729/pexels-photo-1639729.jpeg?auto=compress&cs=tinysrgb&w=600",
-    "https://images.pexels.com/photos/1454171/pexels-photo-1454171.jpeg?auto=compress&cs=tinysrgb&w=600",
-    "https://images.pexels.com/photos/1031955/pexels-photo-1031955.jpeg?auto=compress&cs=tinysrgb&w=600"
-  ];
-
-  for (let i = 0; i < count; i++) {
-    const randomImg = fakeImages[Math.floor(Math.random() * fakeImages.length)];
-    // 注意：這裡 deepLink 暫時用網頁版連結，前端會負責轉成 App 開啟
-    mockItems.push({
-      id: `mock_${i}_${Date.now()}`,
-      name: `[熱銷] 2025 春季新款風格穿搭 #${i + 1}`,
-      price: Math.floor(Math.random() * 1000) + 199,
-      imageUrl: randomImg,
-      shopUrl: "https://shopee.tw/universal-link/product/123456/789012" 
-    });
-  }
-  return mockItems;
-}
-
-// --- 輔助函式：呼叫蝦皮 API (預留區) ---
-async function fetchFromShopee(keyword, limit) {
-  // 等拿到 Key 後，我們再來填寫這一段
-  return [];
-}
+);

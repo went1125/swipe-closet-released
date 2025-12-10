@@ -87,7 +87,7 @@ class ProductDetailModal extends StatelessWidget {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: () => _launchShopee(context, product.deepLink),
+                    onPressed: () => _launchUrl(context, product.deepLink),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
                       foregroundColor: Colors.white,
@@ -104,14 +104,58 @@ class ProductDetailModal extends StatelessWidget {
     );
   }
 
-  Future<void> _launchShopee(BuildContext context, String url) async {
-     final Uri uri = Uri.parse(url);
-     try {
-       if (!await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication)) {
-         await launchUrl(uri, mode: LaunchMode.externalApplication);
-       }
-     } catch (e) {
-       debugPrint("無法開啟連結");
-     }
+Future<void> _launchUrl(BuildContext context, String url) async {
+    // 1. 防呆檢查：連結是否為空？
+    if (url.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("❌ 商品連結無效或為空"),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+      return;
+    }
+
+    // 2. 印出 Log，讓你知道現在到底在開什麼連結
+    debugPrint("🚀 準備開啟連結: $url");
+
+    try {
+      final Uri uri = Uri.parse(url);
+
+      // 3. 嘗試開啟 (邏輯優化)
+      // 優先嘗試用外部 App (LaunchMode.externalNonBrowserApplication)
+      // 如果手機沒裝蝦皮，這行會回傳 false，或是拋出錯誤
+      bool launched = false;
+      try {
+        launched = await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
+      } catch (e) {
+        // 忽略這裡的錯誤，繼續嘗試用瀏覽器開
+        debugPrint("無法以 App 開啟，嘗試使用瀏覽器...");
+      }
+
+      // 4. 如果 App 開不起來，改用瀏覽器開啟 (LaunchMode.externalApplication)
+      if (!launched) {
+        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+
+      // 5. 如果連瀏覽器都開不起來，報錯
+      if (!launched) {
+        throw Exception("無法開啟任何瀏覽器或 App");
+      }
+
+    } catch (e) {
+      debugPrint("❌ 開啟失敗: $e");
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("無法開啟連結: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
